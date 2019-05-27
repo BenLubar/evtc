@@ -133,19 +133,18 @@ func makeCommonEvent(chain *EventChain, event cbtevent1) CommonEvent {
 }
 
 func parseEvent(chain *EventChain, event cbtevent1) (Event, error) {
-	if event.IsStateChange != 0 {
+	switch {
+	case event.IsStateChange != 0:
 		return parseStateChangeEvent(chain, event)
-	} else if event.IsActivation != 0 {
+	case event.IsActivation != 0:
 		return parseActivationEvent(chain, event)
-	} else if event.IsBuffRemove != 0 {
+	case event.IsBuffRemove != 0:
 		return parseBuffRemoveEvent(chain, event)
-	} else if event.Buff != 0 {
-		if event.BuffDmg == 0 {
-			return parseBuffApplyEvent(chain, event)
-		} else {
-			return parseBuffDamageEvent(chain, event)
-		}
-	} else {
+	case event.BuffDmg != 0:
+		return parseBuffDamageEvent(chain, event)
+	case event.Buff != 0:
+		return parseBuffApplyEvent(chain, event)
+	default:
 		return parseDirectDamageEvent(chain, event)
 	}
 }

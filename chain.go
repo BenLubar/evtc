@@ -8,7 +8,6 @@ import (
 )
 
 type EventChain struct {
-	header header
 	agents map[uint64]*Agent
 	skills map[uint32]string
 
@@ -17,19 +16,18 @@ type EventChain struct {
 	timeOffset time.Duration
 
 	ArcDPSVersion string
+	BuildID       int
 	BossSpecies   int
 	BossName      string
 	PointOfView   *Agent
 	Language      language.Tag
-	BuildID       int
+	Events        []Event
 	WorldID       uint16
 	MapID         uint16
-	Events        []Event
 }
 
 func makeEventChain(h header, agents map[uint64]*wrappedAgent, skills map[uint32]string, events []cbtevent1) (*EventChain, error) {
 	chain := &EventChain{
-		header: h,
 		agents: make(map[uint64]*Agent),
 		skills: skills,
 

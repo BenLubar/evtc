@@ -89,4 +89,3 @@ type cbtevent1 struct {
 	IsOffCycle      uint8
 	Pad61_64        uint32
 }
-

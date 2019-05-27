@@ -23,15 +23,15 @@ type wrappedAgent struct {
 	agent
 
 	// synthesized fields
-	charName   string
-	acctName   string
-	subgroup   int
-	instanceId uint16
 	firstAware uint64
 	lastAware  uint64
 	masterAddr uint64
+	charName   string
+	acctName   string
+	subgroup   int
 	volatileID uint16
 	speciesID  uint16
+	instanceID uint16
 }
 
 func wrapAgents(agents []agent, events []cbtevent1) map[uint64]*wrappedAgent {
@@ -58,9 +58,9 @@ func wrapAgents(agents []agent, events []cbtevent1) map[uint64]*wrappedAgent {
 	for _, e := range events {
 		if e.IsStateChange == 0 {
 			if a, ok := lookup[e.SrcAgent]; ok {
-				if a.instanceId == 0 {
+				if a.instanceID == 0 {
 					instanceLookup[e.SrcInstID] = append(instanceLookup[e.SrcInstID], a)
-					a.instanceId = e.SrcInstID
+					a.instanceID = e.SrcInstID
 					a.firstAware = e.Time
 				}
 

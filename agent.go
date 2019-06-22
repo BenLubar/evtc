@@ -1,6 +1,7 @@
 package evtc
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 )
@@ -90,6 +91,95 @@ type Agent struct {
 	wrapped *wrappedAgent
 }
 
+func (a *Agent) MarshalJSON() ([]byte, error) {
+	type AgentJSON struct {
+		Type   string
+		Name   string
+		Hitbox struct {
+			Width  int
+			Height int
+		}
+		Master *Agent `json:",omitempty"`
+	}
+	agent := AgentJSON{
+		Name:   a.Name(),
+		Master: a.Master(),
+	}
+	agent.Hitbox.Width, agent.Hitbox.Height = a.Hitbox()
+
+	if p, ok := a.Player(); ok {
+		agent.Type = "Player"
+		type PlayerStats struct {
+			Toughness     uint8
+			Concentration uint8
+			Healing       uint8
+			Condition     uint8
+		}
+		return json.Marshal(struct {
+			AgentJSON
+			Account    string
+			Subgroup   int
+			Profession int
+			EliteSpec  int
+
+			Stats PlayerStats
+		}{
+			AgentJSON:  agent,
+			Account:    p.Account,
+			Subgroup:   p.Subgroup,
+			Profession: p.Profession,
+			EliteSpec:  p.EliteSpec,
+
+			Stats: PlayerStats{
+				Toughness:     p.Toughness,
+				Concentration: p.Concentration,
+				Healing:       p.Healing,
+				Condition:     p.Condition,
+			},
+		})
+	}
+
+	if n, ok := a.NPC(); ok {
+		agent.Type = "NPC"
+		type NPCStats struct {
+			Toughness     int
+			Concentration int
+			Healing       int
+			Condition     int
+		}
+
+		return json.Marshal(struct {
+			AgentJSON
+			SpeciesID int
+
+			Stats NPCStats
+		}{
+			AgentJSON: agent,
+			SpeciesID: n.SpeciesID,
+
+			Stats: NPCStats{
+				Toughness:     n.Toughness,
+				Concentration: n.Concentration,
+				Healing:       n.Healing,
+				Condition:     n.Condition,
+			},
+		})
+	}
+
+	if a.IsGadget() {
+		agent.Type = "Gadget"
+		return json.Marshal(struct {
+			AgentJSON
+			ID uint64 `json:",string"`
+		}{
+			AgentJSON: agent,
+			ID:        a.wrapped.Addr,
+		})
+	}
+
+	panic("unreachable")
+}
+
 type PlayerInfo struct {
 	Name       string
 	Account    string
@@ -101,8 +191,6 @@ type PlayerInfo struct {
 	Concentration uint8
 	Healing       uint8
 	Condition     uint8
-
-	Width, Height int
 }
 
 func (a *Agent) Name() string {

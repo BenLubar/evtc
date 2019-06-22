@@ -24,6 +24,7 @@ type Event interface {
 
 // BaseEvent is the shared implementation of Event.
 type BaseEvent struct {
+	Type       string
 	LocalTime  time.Time
 	ServerTime time.Time
 	Source     *Agent
@@ -107,19 +108,20 @@ func (e *CommonEvent) IsMoving() bool { return e.Moving }
 // IsFlanking implements CombatEvent.
 func (e *CommonEvent) IsFlanking() bool { return e.Flanking }
 
-func makeBaseEvent(chain *EventChain, event cbtevent1) BaseEvent {
+func makeBaseEvent(typ string, chain *EventChain, event cbtevent1) BaseEvent {
 	offset := time.Duration(event.Time)*time.Millisecond + chain.timeOffset
 
 	return BaseEvent{
+		Type:       typ,
 		LocalTime:  chain.localTime.Add(offset),
 		ServerTime: chain.localTime.Add(offset),
 		Source:     chain.agents[event.SrcAgent],
 	}
 }
 
-func makeCommonEvent(chain *EventChain, event cbtevent1) CommonEvent {
+func makeCommonEvent(typ string, chain *EventChain, event cbtevent1) CommonEvent {
 	return CommonEvent{
-		BaseEvent: makeBaseEvent(chain, event),
+		BaseEvent: makeBaseEvent(typ, chain, event),
 		Target:    chain.agents[event.DstAgent],
 		SkillID:   int(event.SkillID),
 		SkillName: chain.skills[event.SkillID],
@@ -300,45 +302,45 @@ func parseStateChangeEvent(chain *EventChain, event cbtevent1) (Event, error) {
 	switch event.IsStateChange {
 	case 1: // CBTS_ENTERCOMBAT, src_agent entered combat, dst_agent is subgroup
 		return &EnterCombatEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("EnterCombat", chain, event),
 			Subgroup:  int(event.DstAgent),
 		}, nil
 	case 2: // CBTS_EXITCOMBAT, src_agent left combat
 		return &ExitCombatEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("ExitCombat", chain, event),
 		}, nil
 	case 3: // CBTS_CHANGEUP, src_agent is now alive
 		return &StateChangedEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("StateChanged", chain, event),
 			Downed:    false,
 			Defeated:  false,
 		}, nil
 	case 4: // CBTS_CHANGEDEAD, src_agent is now dead
 		return &StateChangedEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("StateChanged", chain, event),
 			Downed:    false,
 			Defeated:  true,
 		}, nil
 	case 5: // CBTS_CHANGEDOWN, src_agent is now downed
 		return &StateChangedEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("StateChanged", chain, event),
 			Downed:    true,
 			Defeated:  false,
 		}, nil
 	case 6: // CBTS_SPAWN, src_agent is now in game tracking range (not in realtime api)
 		return &TrackingChangedEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("TrackingChanged", chain, event),
 			Tracking:  true,
 		}, nil
 	case 7: // CBTS_DESPAWN, src_agent is no longer being tracked (not in realtime api)
 		return &TrackingChangedEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("TrackingChanged", chain, event),
 			Tracking:  false,
 		}, nil
 	case 8: // CBTS_HEALTHUPDATE, src_agent has reached a health marker. dst_agent = percent * 10000 (eg. 99.5% will be 9950) (not in realtime api)
 
 		return &HealthUpdateEvent{
-			BaseEvent:  makeBaseEvent(chain, event),
+			BaseEvent:  makeBaseEvent("HealthUpdate", chain, event),
 			Percentage: uint16(event.DstAgent),
 		}, nil
 	case 9: // CBTS_LOGSTART, log start. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = 0x637261 (arcdps id)
@@ -347,12 +349,13 @@ func parseStateChangeEvent(chain *EventChain, event cbtevent1) (Event, error) {
 		chain.timeOffset = -time.Duration(event.Time) * time.Millisecond
 		return &LogStartEvent{
 			BaseEvent: BaseEvent{
+				Type:       "LogStart",
 				ServerTime: chain.serverTime,
 				LocalTime:  chain.localTime,
 			},
 		}, nil
 	case 10: // CBTS_LOGEND, log end. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = 0x637261 (arcdps id)
-		be := makeBaseEvent(chain, event)
+		be := makeBaseEvent("LogEnd", chain, event)
 		be.Source = nil // just to be safe
 		return &LogEndEvent{
 			BaseEvent:      be,
@@ -361,12 +364,12 @@ func parseStateChangeEvent(chain *EventChain, event cbtevent1) (Event, error) {
 		}, nil
 	case 11: // CBTS_WEAPSWAP, src_agent swapped weapon set. dst_agent = current set id (0/1 water, 4/5 land)
 		return &WeaponSwapEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("WeaponSwap", chain, event),
 			WeaponSet: int(event.DstAgent),
 		}, nil
 	case 12: // CBTS_MAXHEALTHUPDATE, src_agent has had it's maximum health changed. dst_agent = new max health (not in realtime api)
 		return &MaxHealthUpdateEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("MaxHealthUpdate", chain, event),
 			MaxHealth: event.DstAgent,
 		}, nil
 	case 13: // CBTS_POINTOFVIEW, src_agent is agent of "recording" player
@@ -394,7 +397,7 @@ func parseStateChangeEvent(chain *EventChain, event cbtevent1) (Event, error) {
 		return nil, nil
 	case 17: // CBTS_REWARD, src_agent is self, dst_agent is reward id, value is reward type. these are the wiggly boxes that you get
 		return &RewardEvent{
-			BaseEvent:  makeBaseEvent(chain, event),
+			BaseEvent:  makeBaseEvent("Reward", chain, event),
 			RewardID:   int(event.DstAgent),
 			RewardType: int(event.Value),
 		}, nil
@@ -415,38 +418,38 @@ func parseStateChangeEvent(chain *EventChain, event cbtevent1) (Event, error) {
 		}, nil
 	case 19: // CBTS_POSITION, src_agent changed, cast float* p = (float*)&dst_agent, access as x/y/z (float[3]) (not in realtime api)
 		return &PositionEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("Position", chain, event),
 			X:         math.Float32frombits(uint32(event.DstAgent)),
 			Y:         math.Float32frombits(uint32(event.DstAgent >> 32)),
 			Z:         math.Float32frombits(uint32(event.Value)),
 		}, nil
 	case 20: // CBTS_VELOCITY, src_agent changed, cast float* v = (float*)&dst_agent, access as x/y/z (float[3]) (not in realtime api)
 		return &VelocityEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("Velocity", chain, event),
 			X:         math.Float32frombits(uint32(event.DstAgent)),
 			Y:         math.Float32frombits(uint32(event.DstAgent >> 32)),
 			Z:         math.Float32frombits(uint32(event.Value)),
 		}, nil
 	case 21: // CBTS_FACING, src_agent changed, cast float* f = (float*)&dst_agent, access as x/y (float[2]) (not in realtime api)
 		return &FacingEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("Facing", chain, event),
 			X:         math.Float32frombits(uint32(event.DstAgent)),
 			Y:         math.Float32frombits(uint32(event.DstAgent >> 32)),
 		}, nil
 	case 22: // CBTS_TEAMCHANGE, src_agent change, dst_agent new team id
 		return &TeamChangeEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("TeamChange", chain, event),
 			TeamID:    int(event.DstAgent),
 		}, nil
 	case 23: // CBTS_ATTACKTARGET, src_agent is an attacktarget, dst_agent is the parent agent (gadget type), value is the current targetable state (not in realtime api)
 		return &WeakPointEvent{
-			BaseEvent:  makeBaseEvent(chain, event),
+			BaseEvent:  makeBaseEvent("WeakPoint", chain, event),
 			Boss:       chain.agents[event.DstAgent],
 			Targetable: event.Value != 0,
 		}, nil
 	case 24: // CBTS_TARGETABLE, dst_agent is new target-able state (0 = no, 1 = yes. default yes) (not in realtime api)
 		return &TargetableEvent{
-			BaseEvent:  makeBaseEvent(chain, event),
+			BaseEvent:  makeBaseEvent("Targetable", chain, event),
 			Targetable: event.DstAgent != 0,
 		}, nil
 	case 25: // CBTS_MAPID, src_agent is map id
@@ -454,12 +457,12 @@ func parseStateChangeEvent(chain *EventChain, event cbtevent1) (Event, error) {
 		return nil, nil
 	case 27: // CBTS_STACKACTIVE, src_agent is agent with buff, dst_agent is the stackid marked active
 		return &BuffActiveEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("BuffActive", chain, event),
 			Instance:  uint32(event.DstAgent),
 		}, nil
 	case 28: // CBTS_STACKRESET, src_agent is agent with buff, value is the duration to reset to (also marks inactive), pad61- is the stackid
 		return &BuffResetEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("BuffReset", chain, event),
 			Duration:  time.Duration(uint32(event.Value)) * time.Millisecond,
 			Instance:  event.Pad61_64,
 		}, nil
@@ -475,7 +478,7 @@ func parseStateChangeEvent(chain *EventChain, event cbtevent1) (Event, error) {
 		guid[6], guid[7] = guid[7], guid[6]
 
 		return &GuildEvent{
-			BaseEvent: makeBaseEvent(chain, event),
+			BaseEvent: makeBaseEvent("Guild", chain, event),
 			Guild:     guid,
 		}, nil
 	default:
@@ -489,33 +492,33 @@ func parseActivationEvent(chain *EventChain, event cbtevent1) (Event, error) {
 	switch event.IsActivation {
 	case 1: // ACTV_NORMAL, started skill activation without quickness
 		return &SkillActivationEvent{
-			CommonEvent:      makeCommonEvent(chain, event),
+			CommonEvent:      makeCommonEvent("SkillActivation", chain, event),
 			ExpectedDuration: time.Duration(uint32(event.Value)) * time.Millisecond,
 			Quickness:        false,
 		}, nil
 	case 2: // ACTV_QUICKNESS, started skill activation with quickness
 		return &SkillActivationEvent{
-			CommonEvent:      makeCommonEvent(chain, event),
+			CommonEvent:      makeCommonEvent("SkillActivation", chain, event),
 			ExpectedDuration: time.Duration(uint32(event.Value)) * time.Millisecond,
 			Quickness:        true,
 		}, nil
 	case 3: // ACTV_CANCEL_FIRE, stopped skill animation with reaching tooltip time
 		return &SkillActivatedEvent{
-			CommonEvent: makeCommonEvent(chain, event),
+			CommonEvent: makeCommonEvent("SkillActivated", chain, event),
 			Duration:    time.Duration(uint32(event.Value)) * time.Millisecond,
 			Complete:    true,
 			Reset:       false,
 		}, nil
 	case 4: // ACTV_CANCEL_CANCEL, stopped skill activation without reaching tooltip time
 		return &SkillActivatedEvent{
-			CommonEvent: makeCommonEvent(chain, event),
+			CommonEvent: makeCommonEvent("SkillActivated", chain, event),
 			Duration:    time.Duration(uint32(event.Value)) * time.Millisecond,
 			Complete:    false,
 			Reset:       false,
 		}, nil
 	case 5: // ACTV_RESET, animation completed fully
 		return &SkillActivatedEvent{
-			CommonEvent: makeCommonEvent(chain, event),
+			CommonEvent: makeCommonEvent("SkillActivated", chain, event),
 			Duration:    time.Duration(uint32(event.Value)) * time.Millisecond,
 			Complete:    true,
 			Reset:       true,
@@ -528,7 +531,7 @@ func parseActivationEvent(chain *EventChain, event cbtevent1) (Event, error) {
 
 func parseBuffRemoveEvent(chain *EventChain, event cbtevent1) (Event, error) {
 	e := &BuffRemoveEvent{
-		CommonEvent: makeCommonEvent(chain, event),
+		CommonEvent: makeCommonEvent("BuffRemove", chain, event),
 		Duration:    time.Duration(event.Value) * time.Millisecond,
 		Intensity:   time.Duration(event.BuffDmg) * time.Millisecond,
 		Count:       int(event.Result),
@@ -565,7 +568,7 @@ func parseBuffApplyEvent(chain *EventChain, event cbtevent1) (Event, error) {
 	}
 
 	return &ApplyBuffEvent{
-		CommonEvent: makeCommonEvent(chain, event),
+		CommonEvent: makeCommonEvent("ApplyBuff", chain, event),
 		Duration:    time.Duration(event.Value) * time.Millisecond,
 		Instance:    event.Pad61_64,
 		Active:      event.IsShields != 0,
@@ -577,7 +580,7 @@ func parseBuffApplyEvent(chain *EventChain, event cbtevent1) (Event, error) {
 
 func parseBuffDamageEvent(chain *EventChain, event cbtevent1) (Event, error) {
 	return &BuffDamageEvent{
-		CommonEvent: makeCommonEvent(chain, event),
+		CommonEvent: makeCommonEvent("BuffDamage", chain, event),
 		Damage:      int(event.BuffDmg),
 		Tick:        event.IsOffCycle == 0,
 		Success:     event.Result == 0,
@@ -587,7 +590,7 @@ func parseBuffDamageEvent(chain *EventChain, event cbtevent1) (Event, error) {
 
 func parseDirectDamageEvent(chain *EventChain, event cbtevent1) (Event, error) {
 	e := &DirectDamageEvent{
-		CommonEvent: makeCommonEvent(chain, event),
+		CommonEvent: makeCommonEvent("DirectDamage", chain, event),
 		Damage:      int(event.Value),
 		Barrier:     int(event.OverstackValue),
 		WasDowned:   event.IsOffCycle != 0,

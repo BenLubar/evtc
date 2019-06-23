@@ -119,16 +119,16 @@ func (a *Agent) MarshalJSON() ([]byte, error) {
 			AgentJSON
 			Account    string
 			Subgroup   int
-			Profession int
-			EliteSpec  int
+			Profession string
+			Elite      string `json:",omitempty"`
 
 			Stats PlayerStats
 		}{
 			AgentJSON:  agent,
 			Account:    p.Account,
 			Subgroup:   p.Subgroup,
-			Profession: p.Profession,
-			EliteSpec:  p.EliteSpec,
+			Profession: p.Profession.String(),
+			Elite:      p.EliteSpec.String(),
 
 			Stats: PlayerStats{
 				Toughness:     p.Toughness,
@@ -184,8 +184,8 @@ type PlayerInfo struct {
 	Name       string
 	Account    string
 	Subgroup   int
-	Profession int
-	EliteSpec  int
+	Profession ProfessionID
+	EliteSpec  EliteSpecID
 
 	Toughness     uint8
 	Concentration uint8
@@ -210,11 +210,18 @@ func (a *Agent) Player() (PlayerInfo, bool) {
 		return PlayerInfo{}, false
 	}
 
+	profession := ProfessionID(a.wrapped.Prof)
+	eliteSpec := EliteSpecID(a.wrapped.IsElite)
+
+	if eliteSpec == 1 {
+		eliteSpec = hotEliteSpec[profession]
+	}
+
 	return PlayerInfo{
 		Account:    a.wrapped.acctName,
 		Subgroup:   a.wrapped.subgroup,
-		Profession: int(a.wrapped.Prof),
-		EliteSpec:  int(a.wrapped.IsElite),
+		Profession: profession,
+		EliteSpec:  eliteSpec,
 
 		Toughness:     uint8(a.wrapped.Toughness),
 		Concentration: uint8(a.wrapped.Concentration),

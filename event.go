@@ -379,12 +379,16 @@ func parseStateChangeEvent(chain *EventChain, event cbtevent1) (Event, error) {
 		switch event.SrcAgent {
 		case 0:
 			chain.Language = language.English
+		case 1:
+			chain.Language = language.Korean
 		case 2:
 			chain.Language = language.French
 		case 3:
 			chain.Language = language.German
 		case 4:
 			chain.Language = language.Spanish
+		case 5:
+			chain.Language = language.Chinese
 		default:
 			return nil, errors.Errorf("evtc: unknown language ID %d", event.SrcAgent)
 		}
